@@ -1,0 +1,25 @@
+# Exclude git directory
+.git/
+.gitignore
+
+# Dependencies
+node_modules/
+
+# Expo & Build folders
+.expo/
+dist/
+web-build/
+android/
+ios/
+
+# Editor & Agent folders (Crucial for reducing size)
+.vscode/
+.agent/
+.skills/
+*.md
+
+# Logs & System
+npm-debug.log
+yarn-error.log
+.DS_Store
+Thumbs.db
