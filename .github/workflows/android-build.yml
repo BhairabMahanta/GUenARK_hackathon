@@ -1,0 +1,163 @@
+name: Build & Release Android APK
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0, v2.1.0
+  workflow_dispatch:  # Allows manual trigger from GitHub Actions UI
+    inputs:
+      version:
+        description: 'Version name for this release (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+      release_notes:
+        description: 'Release notes for this version'
+        required: false
+        default: 'New release build'
+
+env:
+  NODE_VERSION: '20'
+  JAVA_VERSION: '17'
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+          
+      - name: ☕ Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          
+      - name: 📦 Setup Android SDK
+        uses: android-actions/setup-android@v3
+        
+      - name: 🗂️ Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            frontend/android/.gradle
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+            
+      - name: 📦 Install dependencies
+        working-directory: frontend
+        run: npm ci
+        
+      - name: 🔐 Decode Keystore
+        working-directory: frontend/android
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > app/release.keystore
+          
+      - name: 📝 Create keystore.properties
+        working-directory: frontend/android
+        run: |
+          cat > keystore.properties << EOF
+          storeFile=release.keystore
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          EOF
+          
+      - name: 🎨 Generate Expo prebuild
+        working-directory: frontend
+        run: npx expo prebuild --clean --platform android
+        
+      - name: 🔨 Build Release APK
+        working-directory: frontend/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+          
+      - name: 📋 Get APK info
+        id: apk_info
+        run: |
+          APK_PATH=$(find frontend/android/app/build/outputs/apk/release -name "*.apk" | head -1)
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          echo "apk_name=$(basename $APK_PATH)" >> $GITHUB_OUTPUT
+          
+      - name: 📤 Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: floodmap-android-apk
+          path: ${{ steps.apk_info.outputs.apk_path }}
+          retention-days: 30
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+      
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: 📥 Download APK Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: floodmap-android-apk
+          path: ./release-apk
+          
+      - name: 🏷️ Get version info
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+            RELEASE_NOTES="${{ github.event.inputs.release_notes }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            RELEASE_NOTES="Release $VERSION"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "release_notes=$RELEASE_NOTES" >> $GITHUB_OUTPUT
+          echo "release_tag=v$VERSION" >> $GITHUB_OUTPUT
+          
+      - name: 📝 Rename APK with version
+        run: |
+          APK_FILE=$(find ./release-apk -name "*.apk" | head -1)
+          mv "$APK_FILE" "./release-apk/FloodMap-v${{ steps.version.outputs.version }}.apk"
+          
+      - name: 🚀 Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.release_tag }}
+          name: FloodMap v${{ steps.version.outputs.version }}
+          body: |
+            ## 🌊 FloodMap v${{ steps.version.outputs.version }}
+            
+            ${{ steps.version.outputs.release_notes }}
+            
+            ### 📱 Installation
+            1. Download the APK file below
+            2. Enable "Install from Unknown Sources" in your Android settings
+            3. Open the downloaded APK and install
+            
+            ### ⚠️ Requirements
+            - Android 7.0 (API 24) or higher
+            - Location permissions for flood monitoring features
+            
+            ---
+            *Built with GitHub Actions* 🤖
+          files: ./release-apk/FloodMap-v${{ steps.version.outputs.version }}.apk
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,30 @@
+[
+  {
+    "minzoom": 8.6,
+    "layout": {
+      "visibility": "none"
+    },
+    "filter": [
+      "match",
+      [
+        "get",
+        "name"
+      ],
+      [
+        "Basistha Basin"
+      ],
+      true,
+      false
+    ],
+    "type": "fill",
+    "source": "composite",
+    "id": "Basistha",
+    "paint": {
+      "fill-color": "rgb(174, 126, 251)",
+      "fill-opacity": 0.71,
+      "fill-outline-color": "rgb(238, 185, 165)"
+    },
+    "slot": "top",
+    "source-layer": "guwahati_basins_template-bzk1qj"
+  }
+]
