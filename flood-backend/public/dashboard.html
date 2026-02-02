@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flood Monitoring Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 20px;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 30px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+    h1 { font-size: 2rem; margin-bottom: 5px; }
+    .subtitle { opacity: 0.9; }
+    
+    .controls {
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    .controls h3 { margin-bottom: 15px; }
+    .button-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 15px;
+    }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: all 0.2s;
+    }
+    button:hover { 
+      background: #2563eb; 
+      transform: translateY(-2px);
+    }
+    button:disabled {
+      background: #475569;
+      cursor: not-allowed;
+      transform: none;
+    }
+    button.danger { background: #ef4444; }
+    button.danger:hover { background: #dc2626; }
+    button.success { background: #10b981; }
+    button.success:hover { background: #059669; }
+    
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 8px;
+      border-left: 4px solid #3b82f6;
+      transition: transform 0.2s;
+    }
+    .stat-card:hover { transform: translateY(-5px); }
+    .stat-card.critical { border-color: #ef4444; }
+    .stat-card.warning { border-color: #f59e0b; }
+    .stat-card.success { border-color: #10b981; }
+    .stat-value { font-size: 2rem; font-weight: bold; margin: 10px 0; }
+    .stat-label { color: #94a3b8; font-size: 0.9rem; }
+    .stat-sublabel { color: #64748b; font-size: 0.75rem; margin-top: 5px; }
+    
+    .filters {
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    .filter-row {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      margin-top: 15px;
+    }
+    select, input {
+      background: #0f172a;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      padding: 10px 15px;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      min-width: 200px;
+    }
+    select:focus, input:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+    
+    .charts-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    .chart-card {
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 8px;
+    }
+    .chart-card h3 {
+      margin-bottom: 15px;
+      font-size: 1.1rem;
+    }
+    .chart-container {
+      position: relative;
+      height: 400px;
+    }
+    
+    .zones {
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    .zone-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 15px;
+      margin: 10px 0;
+      background: #0f172a;
+      border-radius: 6px;
+      border-left: 4px solid #22c55e;
+      transition: transform 0.2s;
+      cursor: pointer;
+    }
+    .zone-item:hover { transform: translateX(5px); }
+    .zone-item.critical { border-color: #ef4444; }
+    .zone-item.warning { border-color: #f59e0b; }
+    .zone-item.watch { border-color: #eab308; }
+    
+    .status-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+    .status-indicator.online { background: #10b981; }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .last-update { 
+      text-align: right; 
+      color: #64748b; 
+      margin-top: 10px;
+      font-size: 0.85rem;
+    }
+    
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #1e293b;
+      padding: 15px 20px;
+      border-radius: 8px;
+      border-left: 4px solid #3b82f6;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      transform: translateX(400px);
+      transition: transform 0.3s;
+      z-index: 1000;
+    }
+    .notification.show { transform: translateX(0); }
+    .notification.success { border-color: #10b981; }
+    .notification.error { border-color: #ef4444; }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 1200px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🌊 Guwahati Flood Prediction System</h1>
+    <p class="subtitle">
+      <span class="status-indicator online"></span>
+      Real-time monitoring • AI-powered predictions
+    </p>
+  </div>
+
+  <!-- Simulation Controls -->
+  <div class="controls">
+    <h3>🎮 Simulation Controls</h3>
+    <div class="button-group">
+      <button onclick="setWeather('normal')">☀️ Normal</button>
+      <button onclick="setWeather('heavy_rain')">🌧️ Heavy Rain</button>
+      <button onclick="setWeather('extreme')" class="danger">⚠️ Extreme</button>
+      <button onclick="triggerSimulation()">🔄 Run Simulation</button>
+      <button onclick="refresh()">↻ Refresh</button>
+    </div>
+    <div class="last-update" id="lastUpdate">Last update: --</div>
+  </div>
+
+  <!-- Flood Stats -->
+  <div class="stats" id="stats">
+    <div class="stat-card">
+      <div class="stat-label">Loading...</div>
+      <div class="stat-value">--</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <h3>🔍 Filters</h3>
+    <div class="filter-row">
+      <select id="basinFilter" onchange="applyFilters()">
+        <option value="">All Basins</option>
+      </select>
+      <select id="drainFilter" onchange="loadDrainHistory()">
+        <option value="">Select Drain for Timeline</option>
+      </select>
+      <select id="riskFilter" onchange="applyFilters()">
+        <option value="">All Risk Levels</option>
+        <option value="NORMAL">Normal</option>
+        <option value="WATCH">Watch</option>
+        <option value="WARNING">Warning</option>
+        <option value="CRITICAL">Critical</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-grid">
+    <div class="chart-card">
+      <h3>📊 Drain Health Timeline (DCI & Effectiveness)</h3>
+      <div class="chart-container">
+        <canvas id="dciChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="chart-card">
+      <h3>💧 Water Levels by Basin</h3>
+      <div class="chart-container" style="height: 300px;">
+        <canvas id="waterLevelChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <h3>⚠️ Risk Distribution</h3>
+      <div class="chart-container" style="height: 300px;">
+        <canvas id="riskChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Critical Zones -->
+  <div class="zones">
+    <h3>📍 Critical Zones (<span id="zoneCount">0</span>)</h3>
+    <div id="zones">Loading...</div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div class="notification" id="notification"></div>
+
+<script>
+    const API_URL = 'http://localhost:5005/api/flood';
+    let autoRefreshInterval;
+    
+    // Chart instances
+    let dciChart, waterLevelChart, riskChart;
+    
+    // Data stores
+    let allZones = [];
+    let allDrains = [];
+    let basins = new Set();
+
+
+    // Initialize charts
+    function initCharts() {
+      // DCI timeline chart
+      const dciCtx = document.getElementById('dciChart').getContext('2d');
+      dciChart = new Chart(dciCtx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'DCI',
+              data: [],
+              borderColor: '#3b82f6',
+              backgroundColor: 'rgba(59, 130, 246, 0.1)',
+              tension: 0.4,
+              fill: true
+            },
+            {
+              label: 'DCI Effective',
+              data: [],
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              tension: 0.4,
+              fill: true
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#e2e8f0' } }
+          },
+          scales: {
+            y: { 
+              ticks: { color: '#94a3b8' },
+              grid: { color: '#334155' },
+              title: { display: true, text: 'Capacity Index', color: '#94a3b8' }
+            },
+            x: { 
+              ticks: { color: '#94a3b8' },
+              grid: { color: '#334155' }
+            }
+          }
+        }
+      });
+
+
+      // Water level chart
+      const waterCtx = document.getElementById('waterLevelChart').getContext('2d');
+      waterLevelChart = new Chart(waterCtx, {
+        type: 'bar',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Avg Water Level %',
+            data: [],
+            backgroundColor: 'rgba(59, 130, 246, 0.8)'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#e2e8f0' } }
+          },
+          scales: {
+            y: { 
+              beginAtZero: true,
+              max: 100,
+              ticks: { color: '#94a3b8' },
+              grid: { color: '#334155' }
+            },
+            x: { 
+              ticks: { color: '#94a3b8' },
+              grid: { color: '#334155' }
+            }
+          }
+        }
+      });
+
+
+      // Risk distribution chart
+      const riskCtx = document.getElementById('riskChart').getContext('2d');
+      riskChart = new Chart(riskCtx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Normal', 'Watch', 'Warning', 'Critical'],
+          datasets: [{
+            data: [0, 0, 0, 0],
+            backgroundColor: [
+              '#10b981',
+              '#eab308',
+              '#f59e0b',
+              '#ef4444'
+            ]
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#e2e8f0' } }
+          }
+        }
+      });
+    }
+
+
+// Load drain history for DCI chart
+async function loadDrainHistory() {
+  const drainId = document.getElementById('drainFilter').value;
+  if (!drainId) {
+    dciChart.data.labels = [];
+    dciChart.data.datasets[0].data = [];
+    dciChart.data.datasets[1].data = [];
+    dciChart.update();
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_URL}/sensors/drain/${drainId}/history?limit=100`);
+    const data = await res.json();
+    
+    console.log('Drain history response:', data);
+    
+    if (data.success && data.data && data.data.length > 0) {
+      const readings = data.data;
+      
+      dciChart.data.labels = readings.map(r => 
+        new Date(r.timestamp).toLocaleTimeString()
+      );
+      dciChart.data.datasets[0].data = readings.map(r => r.dci || 0);
+      dciChart.data.datasets[1].data = readings.map(r => r.dciEff || 0);
+      dciChart.update();
+      
+      showNotification(`Loaded ${readings.length} readings for drain ${drainId}`, 'success');
+    } else {
+      dciChart.data.labels = [];
+      dciChart.data.datasets[0].data = [];
+      dciChart.data.datasets[1].data = [];
+      dciChart.update();
+      showNotification('No history available for this drain', 'error');
+    }
+  } catch (error) {
+    console.error('Error loading drain history:', error);
+    showNotification('Failed to load drain data', 'error');
+  }
+}
+
+
+    // Update risk chart
+    function updateRiskChart() {
+      const filteredZones = getFilteredZones();
+      
+      const counts = {
+        normal: 0,
+        watch: 0,
+        warning: 0,
+        critical: 0
+      };
+      
+      filteredZones.forEach(zone => {
+        const risk = zone.riskLevel.toLowerCase();
+        if (counts[risk] !== undefined) counts[risk]++;
+        else counts.normal++;
+      });
+      
+      riskChart.data.datasets[0].data = [
+        counts.normal,
+        counts.watch,
+        counts.warning,
+        counts.critical
+      ];
+      riskChart.update();
+    }
+
+
+// Update water level chart
+function updateWaterLevelChart() {
+  if (!allDrains || allDrains.length === 0) {
+    console.warn('No drains available for water level chart');
+    return;
+  }
+  
+  const basinData = {};
+  
+  allDrains.forEach(drain => {
+    const basin = drain.basinId || 'Unknown';
+    if (basin === 'Unknown') return;
+    
+    if (!basinData[basin]) {
+      basinData[basin] = { total: 0, count: 0 };
+    }
+    
+    const waterLevel = drain.waterLevelPercent || drain.currentWaterLevel || 0;
+    basinData[basin].total += waterLevel;
+    basinData[basin].count++;
+  });
+  
+  const labels = Object.keys(basinData).sort();
+  const data = labels.map(basin => 
+    parseFloat((basinData[basin].total / basinData[basin].count).toFixed(1))
+  );
+  
+  waterLevelChart.data.labels = labels;
+  waterLevelChart.data.datasets[0].data = data;
+  waterLevelChart.update();
+  
+  console.log('Water levels updated:', { labels, data });
+}
+
+
+    // Show notification
+    function showNotification(message, type = 'success') {
+      const notif = document.getElementById('notification');
+      notif.textContent = message;
+      notif.className = `notification ${type} show`;
+      
+      setTimeout(() => {
+        notif.classList.remove('show');
+      }, 3000);
+    }
+
+
+// Fetch flood alerts data
+async function fetchFloodData() {
+  try {
+    const res = await fetch(`${API_URL}/predictions/alerts`);
+    const data = await res.json();
+    
+    console.log('Flood alerts response:', data);
+    
+    if (!data.success || !data.summary) {
+      document.getElementById('stats').innerHTML = `
+        <div class="stat-card warning">
+          <div class="stat-label">System Status</div>
+          <div class="stat-value">⏳</div>
+          <div class="stat-sublabel">Waiting for simulation...</div>
+        </div>
+      `;
+      document.getElementById('zones').innerHTML = 
+        '<p style="color: #64748b; padding: 20px;">⏳ Click "Run Simulation" to generate data...</p>';
+      return;
+    }
+    
+    allZones = data.zones || [];
+    
+    const statsHTML = `
+      <div class="stat-card critical">
+        <div class="stat-label">Critical Zones</div>
+        <div class="stat-value">${data.summary.criticalZones || 0}</div>
+        <div class="stat-sublabel">Immediate action needed</div>
+      </div>
+      <div class="stat-card warning">
+        <div class="stat-label">Zones at Risk</div>
+        <div class="stat-value">${data.summary.totalZonesAtRisk || 0}</div>
+        <div class="stat-sublabel">Monitoring required</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Critical Basins</div>
+        <div class="stat-value">${data.summary.criticalBasins || 0}</div>
+        <div class="stat-sublabel">Basin-level alerts</div>
+      </div>
+      <div class="stat-card success">
+        <div class="stat-label">Active Routes</div>
+        <div class="stat-value">${data.summary.activeEvacuationRoutes || 0}</div>
+        <div class="stat-sublabel">Evacuation available</div>
+      </div>
+    `;
+    document.getElementById('stats').innerHTML = statsHTML;
+    
+    populateFilters();
+    applyFilters();
+    updateRiskChart();
+    
+    document.getElementById('lastUpdate').textContent = 
+      `Last update: ${new Date(data.timestamp).toLocaleTimeString()}`;
+    
+  } catch (error) {
+    console.error('Error fetching flood data:', error);
+    showNotification('Failed to fetch flood data', 'error');
+  }
+}
+
+
+    // Fetch all drains
+    async function fetchDrains() {
+      try {
+        const res = await fetch(`${API_URL}/sensors/latest`);
+        const data = await res.json();
+        
+        console.log('Latest sensors response:', data);
+        
+        if (data.success && data.data) {
+          allDrains = data.data;
+          updateWaterLevelChart();
+          populateDrainFilter();
+        }
+      } catch (error) {
+        console.error('Error fetching drains:', error);
+      }
+    }
+
+
+    // Populate basin and drain filters
+    function populateFilters() {
+      basins.clear();
+      allZones.forEach(zone => basins.add(zone.basinId));
+      
+      const basinFilter = document.getElementById('basinFilter');
+      basinFilter.innerHTML = '<option value="">All Basins</option>';
+      Array.from(basins).sort().forEach(basin => {
+        basinFilter.innerHTML += `<option value="${basin}">${basin}</option>`;
+      });
+    }
+
+
+    function populateDrainFilter() {
+      const drainFilter = document.getElementById('drainFilter');
+      drainFilter.innerHTML = '<option value="">Select Drain for Timeline</option>';
+      
+      const drainsByBasin = {};
+      allDrains.forEach(drain => {
+        const basin = drain.basinId || 'Unknown';
+        if (!drainsByBasin[basin]) {
+          drainsByBasin[basin] = [];
+        }
+        drainsByBasin[basin].push(drain);
+      });
+      
+      Object.keys(drainsByBasin).sort().forEach(basin => {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = basin;
+        drainsByBasin[basin].sort((a, b) => a.drainId - b.drainId).forEach(drain => {
+          const option = document.createElement('option');
+          option.value = drain.drainId;
+          option.textContent = `Drain ${drain.drainId} (${drain.zoneId || 'N/A'})`;
+          optgroup.appendChild(option);
+        });
+        drainFilter.appendChild(optgroup);
+      });
+    }
+
+
+    // Get filtered zones
+    function getFilteredZones() {
+      const basinFilter = document.getElementById('basinFilter').value;
+      const riskFilter = document.getElementById('riskFilter').value;
+      
+      return allZones.filter(zone => {
+        if (basinFilter && zone.basinId !== basinFilter) return false;
+        if (riskFilter && zone.riskLevel !== riskFilter) return false;
+        return true;
+      });
+    }
+
+
+    // Apply filters
+    function applyFilters() {
+      const filtered = getFilteredZones();
+      renderZones(filtered);
+      updateRiskChart();
+    }
+
+
+    // Render zones list with expandable drain details
+    function renderZones(zones) {
+      const criticalZones = zones
+        .filter(z => z.riskLevel !== 'NORMAL')
+        .sort((a, b) => a.zoneFloodTimeHr - b.zoneFloodTimeHr);
+
+      document.getElementById('zoneCount').textContent = criticalZones.length;
+
+      const zonesHTML = criticalZones.length > 0 
+        ? criticalZones.map(zone => {
+            // Get drains for this zone
+            const zoneDrains = allDrains.filter(d => d.zoneId === zone.zoneId && d.basinId === zone.basinId);
+            
+            return `
+              <div class="zone-item ${zone.riskLevel.toLowerCase()}" 
+                   onclick="toggleDrainDetails('zone-${zone.zoneId}')">
+                <div style="flex: 1;">
+                  <strong>${zone.zoneId}</strong>
+                  <div style="color: #94a3b8; font-size: 0.9rem;">
+                    ${zone.affectedDrains} drains • ${zone.basinId} basin
+                  </div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="font-size: 1.5rem; font-weight: bold;">
+                    ${zone.zoneFloodTimeHr.toFixed(1)}h
+                  </div>
+                  <div style="color: #94a3b8; font-size: 0.9rem;">
+                    ${zone.riskLevel}
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Expandable drain details -->
+              <div id="zone-${zone.zoneId}" style="display: none; background: #0f172a; padding: 15px; margin: -5px 0 10px 0; border-radius: 0 0 6px 6px;">
+                <h4 style="margin-bottom: 10px; color: #94a3b8; font-size: 0.9rem;">Individual Drain Status:</h4>
+                ${zoneDrains.length > 0 ? zoneDrains.map(drain => `
+                  <div style="display: flex; justify-content: space-between; padding: 8px; background: #1e293b; margin-bottom: 5px; border-radius: 4px; border-left: 3px solid ${getRiskColor(drain.riskLevel || 'NORMAL')}">
+                    <div>
+                      <strong style="color: #e2e8f0;">Drain ${drain.drainId}</strong>
+                      <span style="color: #64748b; margin-left: 10px; font-size: 0.85rem;">
+                        Water: ${(drain.waterLevelPercent || 0).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div style="text-align: right;">
+                      <span style="color: #94a3b8; font-size: 0.85rem;">
+                        ${drain.timeToFailureHr !== null && drain.timeToFailureHr !== undefined 
+                          ? `${drain.timeToFailureHr.toFixed(1)}h` 
+                          : 'Stable'}
+                      </span>
+                      <span style="margin-left: 10px; padding: 2px 8px; background: ${getRiskBg(drain.riskLevel || 'NORMAL')}; border-radius: 3px; font-size: 0.75rem;">
+                        ${drain.riskLevel || 'NORMAL'}
+                      </span>
+                    </div>
+                  </div>
+                `).join('') : '<p style="color: #64748b; font-size: 0.85rem;">No drain data available</p>'}
+              </div>
+            `;
+          }).join('')
+        : '<p style="color: #64748b; padding: 20px;">✅ No critical zones</p>';
+
+      document.getElementById('zones').innerHTML = zonesHTML;
+    }
+
+    // Toggle drain details
+    function toggleDrainDetails(zoneId) {
+      const details = document.getElementById(zoneId);
+      if (details.style.display === 'none') {
+        details.style.display = 'block';
+      } else {
+        details.style.display = 'none';
+      }
+    }
+
+    // Get risk color for drain border
+    function getRiskColor(risk) {
+      const colors = {
+        'CRITICAL': '#ef4444',
+        'WARNING': '#f59e0b',
+        'WATCH': '#eab308',
+        'NORMAL': '#10b981',
+        'OFFLINE': '#64748b'
+      };
+      return colors[risk] || '#10b981';
+    }
+
+    // Get risk background color
+    function getRiskBg(risk) {
+      const colors = {
+        'CRITICAL': 'rgba(239, 68, 68, 0.2)',
+        'WARNING': 'rgba(245, 158, 11, 0.2)',
+        'WATCH': 'rgba(234, 179, 8, 0.2)',
+        'NORMAL': 'rgba(16, 185, 129, 0.2)',
+        'OFFLINE': 'rgba(100, 116, 139, 0.2)'
+      };
+      return colors[risk] || 'rgba(16, 185, 129, 0.2)';
+    }
+
+
+    // Set weather mode
+    async function setWeather(mode) {
+      try {
+        const btn = event.target;
+        btn.disabled = true;
+        const originalText = btn.textContent;
+        btn.textContent = '⏳ Setting...';
+
+        const res = await fetch(`${API_URL}/sensors/weather`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode })
+        });
+
+        const result = await res.json();
+        
+        if (result.success) {
+          showNotification(`Weather changed to: ${mode}`, 'success');
+        }
+
+        btn.disabled = false;
+        btn.textContent = originalText;
+        setTimeout(refresh, 2000);
+      } catch (error) {
+        console.error('Error:', error);
+        showNotification('Failed to change weather', 'error');
+        event.target.disabled = false;
+      }
+    }
+
+
+    // Trigger manual simulation
+    async function triggerSimulation() {
+      try {
+        const btn = event.target;
+        btn.disabled = true;
+        btn.textContent = '⏳ Simulating...';
+
+        const res = await fetch(`${API_URL}/sensors/simulate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ weatherMode: 'normal' })
+        });
+
+        const result = await res.json();
+        
+        if (result.success) {
+          showNotification('Simulation started - refresh in 3s...', 'success');
+        }
+
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.textContent = '🔄 Run Simulation';
+          refresh();
+        }, 3000);
+      } catch (error) {
+        console.error('Error:', error);
+        showNotification('Simulation failed', 'error');
+        event.target.disabled = false;
+        event.target.textContent = '🔄 Run Simulation';
+      }
+    }
+
+
+    // Refresh all data
+    function refresh() {
+      fetchFloodData();
+      fetchDrains();
+      const drainId = document.getElementById('drainFilter').value;
+      if (drainId) loadDrainHistory();
+      showNotification('Dashboard refreshed', 'success');
+    }
+
+
+    // Initialize
+    console.log('Initializing dashboard...');
+    initCharts();
+    fetchFloodData();
+    fetchDrains();
+
+
+    // Auto-refresh every 30 seconds
+    autoRefreshInterval = setInterval(() => {
+      fetchFloodData();
+      fetchDrains();
+      const drainId = document.getElementById('drainFilter').value;
+      if (drainId) loadDrainHistory();
+    }, 30000);
+  </script>
+
+</body>
+</html>
