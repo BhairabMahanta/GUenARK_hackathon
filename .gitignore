@@ -1,0 +1,5 @@
+frontend/.env
+keystore_base64.txt
+frontend/scripts/generate-keystore.sh
+frontend/scripts/generate-keystore.ps1
+frontend/scripts/release.keystore
